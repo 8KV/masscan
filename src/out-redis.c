@@ -323,19 +323,44 @@ redis_out_banner(struct Output *out, FILE *fp, time_t timestamp,
         enum ApplicationProtocol proto, unsigned ttl,
         const unsigned char *px, unsigned length)
 {
-    UNUSEDPARM(ttl);
-    UNUSEDPARM(timestamp);
-    UNUSEDPARM(out);
-    UNUSEDPARM(fp);
-    UNUSEDPARM(ip);
-    UNUSEDPARM(ip_proto);
-    UNUSEDPARM(port);
-    UNUSEDPARM(proto);
-    UNUSEDPARM(px);
-    UNUSEDPARM(length);
+    char line[1024];
+    int line_length;
+    char ip_string[64];
+    char port_string[10];
+    int ip_string_length;
+    int port_string_length;
+    size_t count;
+    char values[64];
+    int values_length;
+    ipaddress_formatted_t fmt = ipaddress_fmt(ip);
+    ptrdiff_t fd = (ptrdiff_t)fp;
 
+    ip_string_length = snprintf(ip_string, sizeof(ip_string), "%s", fmt.string);
+    port_string_length = snprintf(port_string, sizeof(port_string), "%u", port);
+
+    /* KEY: ip:port/banner */
+    values_length = snprintf(values, sizeof(values), "%u:%u",
+        (unsigned)timestamp, proto);
+    line_length = snprintf(line, sizeof(line),
+            "*3\r\n"
+            "$4\r\nSADD\r\n"
+            "$%d\r\n%s:%s/banner\r\n"
+            "$%d\r\n%s\r\n"
+            ,
+            ip_string_length + 1 + port_string_length + 7,
+            ip_string, port_string,
+            values_length, values
+            );
+
+    count = send((SOCKET)fd, line, (int)line_length, 0);
+    if (count != (size_t)line_length) {
+        LOG(0, "redis: error sending data\n");
+        exit(1);
+    }
+    out->redis.outstanding++;
+
+    clean_response_queue(out, (SOCKET)fd);
 }
-
 
 /****************************************************************************
  ****************************************************************************/
